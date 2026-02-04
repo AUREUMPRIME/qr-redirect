@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Stickers-Orden Admin</title>
+  <style>
+    :root{
+      --bg:#010b01;
+      --fg:#b7ffb7;
+      --dim:#7dff7d;
+      --line:rgba(140,255,140,.55);
+      --glow:rgba(100,255,120,.35);
+    }
+    html,body{height:100%;margin:0}
+    body{
+      background:
+        radial-gradient(1200px 600px at 50% 10%, rgba(0,255,120,.10), transparent 60%),
+        var(--bg);
+      color:var(--fg);
+      font-family:Consolas,"Courier New",monospace;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+    }
+    .frame{
+      width:100%;
+      max-width:720px;
+      border:2px solid var(--line);
+      border-radius:18px;
+      padding:18px;
+      background:linear-gradient(180deg, rgba(3,22,3,.92), rgba(1,11,1,.92));
+      box-shadow:0 0 40px var(--glow);
+      position:relative;
+      overflow:hidden;
+    }
+    .frame::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      border-radius:18px;
+      background:repeating-linear-gradient(
+        to bottom,
+        rgba(0,0,0,.18) 0px,
+        rgba(0,0,0,.18) 1px,
+        rgba(0,0,0,0) 3px,
+        rgba(0,0,0,0) 4px
+      );
+      mix-blend-mode:multiply;
+    }
+    h1{
+      margin:0 0 14px;
+      font-size:24px;
+      letter-spacing:1px;
+      text-shadow:0 0 10px rgba(140,255,160,.55);
+      position:relative;
+      z-index:1;
+    }
+    .card{
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:16px;
+      position:relative;
+      z-index:1;
+      background:rgba(1,11,1,.35);
+    }
+    .row{margin:12px 0}
+    .current-label{font-size:16px}
+    code{
+      background:rgba(0,255,120,.08);
+      padding:2px 8px;
+      border-radius:10px;
+      border:1px solid rgba(140,255,140,.25);
+      color:var(--fg);
+    }
+    label{
+      display:block;
+      font-weight:800;
+      margin:0 0 6px;
+      color:var(--dim);
+      letter-spacing:.5px;
+    }
+    input{
+      width:100%;
+      font:inherit;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(0,10,0,.55);
+      color:var(--fg);
+      outline:none;
+    }
+    input:focus{ box-shadow:0 0 0 3px rgba(120,255,140,.18); }
+    button{
+      width:100%;
+      font:inherit;
+      padding:14px;
+      border-radius:12px;
+      border:2px solid var(--line);
+      cursor:pointer;
+      background:rgba(0,0,0,.15);
+      color:var(--fg);
+      font-weight:900;
+      text-transform:uppercase;
+      letter-spacing:1px;
+      text-shadow:0 0 10px rgba(140,255,160,.45);
+    }
+    button:hover{background:rgba(0,255,120,.07)}
+    button:active{transform:translateY(1px)}
+    button:disabled{opacity:.6;cursor:not-allowed}
+  </style>
+</head>
+<body>
+  <!-- build:20260204-075120 -->
+  <div class="frame" role="application" aria-label="Stickers-Orden Admin CRT">
+    <h1>Stickers-Orden Admin</h1>
+    <div class="card">
+      <div class="row current-label">Current URL: <code id="currentCode">Loading...</code></div>
+
+      <div class="row">
+        <label for="url">New URL</label>
+        <input id="url" placeholder="https://..." autocomplete="off" />
+      </div>
+
+      <div class="row">
+        <button id="publish" type="button">Publish</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var elCurrent = document.getElementById('currentCode');
+  var elUrl = document.getElementById('url');
+  var elPublish = document.getElementById('publish');
+
+  var TOKEN_KEY = 'qr_admin_token_v2';
+
+  function nowUtcNoMs() {
+    var iso = new Date().toISOString();
+    return iso.slice(0, 19) + 'Z';
+  }
+
+  function parseOwnerRepoFolder() {
+    // https://{owner}.github.io/{repo}/{folder}/admin/
+    var hostParts = String(location.host || '').split('.');
+    var owner = (hostParts[0] || '').trim();
+    var parts = String(location.pathname || '').split('/').filter(Boolean); // [repo, folder, admin]
+    var repo = (parts[0] || '').trim();
+    var folder = (parts[1] || 'Stickers-Orden').trim();
+    return { owner: owner, repo: repo, folder: folder };
+  }
+
+  function safePath(path) {
+    return String(path).split('/').map(encodeURIComponent).join('/');
+  }
+
+  function startsWithHttp(url) {
+    url = String(url || '').trim().toLowerCase();
+    return url.indexOf('http://') === 0 || url.indexOf('https://') === 0;
+  }
+
+  function setCurrentText(text) {
+    elCurrent.textContent = String(text || '');
+  }
+
+  function loadCurrent() {
+    var u = new URL('../target.json', location.href);
+    u.searchParams.set('b', String(Date.now()));
+    fetch(u.toString(), { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        var cur = (data && typeof data.url === 'string') ? data.url.trim() : '';
+        setCurrentText(cur || '(empty)');
+        if (cur) elUrl.value = cur;
+      })
+      .catch(function (e) {
+        setCurrentText('(failed to load)');
+        alert('Failed to load current URL: ' + (e && e.message ? e.message : String(e)));
+      });
+  }
+
+  function publish() {
+    var dest = String(elUrl.value || '').trim();
+    if (!startsWithHttp(dest)) {
+      alert('Enter a valid URL starting with http:// or https://');
+      return;
+    }
+
+    var token = String(localStorage.getItem(TOKEN_KEY) || '').trim();
+    if (!token) {
+      token = String(prompt('Paste GitHub token (saved on this PC).', '') || '').trim();
+      if (!token) return;
+      localStorage.setItem(TOKEN_KEY, token);
+    }
+
+    var info = parseOwnerRepoFolder();
+    if (!info.owner || !info.repo) {
+      alert('Could not determine owner/repo from this URL.');
+      return;
+    }
+
+    var branch = 'main';
+    var filePath = info.folder + '/target.json';
+    var apiBase = 'https://api.github.com';
+
+    var headers = {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': 'Bearer ' + token,
+      'X-GitHub-Api-Version': '2022-11-28'
+    };
+
+    elPublish.disabled = true;
+    elPublish.textContent = 'Publishing...';
+
+    var getUrl = apiBase + '/repos/' + info.owner + '/' + info.repo + '/contents/' + safePath(filePath) + '?ref=' + encodeURIComponent(branch);
+    fetch(getUrl, { headers: headers })
+      .then(function (res) {
+        if (!res.ok) throw new Error('GitHub GET failed (' + res.status + ')');
+        return res.json();
+      })
+      .then(function (cur) {
+        if (!cur || !cur.sha) throw new Error('Missing sha');
+        var json = JSON.stringify({ url: dest, updatedUtc: nowUtcNoMs() }, null, 2) + '\n';
+        var body = {
+          message: 'Update ' + filePath,
+          content: btoa(unescape(encodeURIComponent(json))),
+          sha: cur.sha,
+          branch: branch
+        };
+
+        var putUrl = apiBase + '/repos/' + info.owner + '/' + info.repo + '/contents/' + safePath(filePath);
+        return fetch(putUrl, {
+          method: 'PUT',
+          headers: Object.assign({}, headers, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify(body)
+        });
+      })
+      .then(function (res) {
+        if (!res.ok) {
+          return res.text().then(function (t) { throw new Error('GitHub PUT failed (' + res.status + '): ' + t); });
+        }
+        setCurrentText(dest);
+        alert('Published. Pages may take a short time to reflect updates.');
+      })
+      .catch(function (e) {
+        alert('Publish failed: ' + (e && e.message ? e.message : String(e)));
+      })
+      .finally(function () {
+        elPublish.disabled = false;
+        elPublish.textContent = 'Publish';
+      });
+  }
+
+  elPublish.addEventListener('click', publish);
+  loadCurrent();
+})();
+</script>
+</body>
+</html>
