@@ -3,23 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Luisito-Wichin Admin</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;line-height:1.35;max-width:820px}
-    h1{margin:0 0 12px}
-    .card{border:1px solid #e5e5e5;border-radius:16px;padding:16px}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:22px;max-width:720px}
+    h1{margin:0 0 12px;font-size:28px}
+    .card{border:1px solid #e6e6e6;border-radius:16px;padding:16px}
     .row{margin:12px 0}
-    label{display:block;font-weight:700;margin:0 0 6px}
+    label{display:block;font-weight:800;margin:0 0 6px}
     input{width:100%;font:inherit;padding:12px;border-radius:12px;border:1px solid #bbb}
-    button{width:100%;font:inherit;padding:14px;border-radius:12px;border:0;cursor:pointer;background:#111;color:#fff;font-weight:800}
+    button{width:100%;font:inherit;padding:14px;border-radius:12px;border:0;cursor:pointer;background:#111;color:#fff;font-weight:900}
     #current{font-size:16px}
     #current code{background:#f5f5f5;padding:2px 6px;border-radius:8px}
-    .muted{color:#555;font-size:13px;margin-top:10px}
   </style>
 </head>
 <body>
+  <!-- build:20260204-044045 -->
   <h1>Luisito-Wichin Admin</h1>
-
   <div class="card">
     <div class="row" id="current">Current URL: <code>Loading...</code></div>
 
@@ -31,10 +33,6 @@
     <div class="row">
       <button id="publish" type="button">Publish</button>
     </div>
-
-    <div class="muted">
-      First time you click Publish, you will be asked for a GitHub token in a popup (then it is remembered on this PC).
-    </div>
   </div>
 
 <script>
@@ -43,12 +41,14 @@
   const elUrl = document.getElementById('url');
   const elPublish = document.getElementById('publish');
 
+  const TOKEN_KEY = 'qr_admin_token_v2';
+
   function nowUtc() {
     return new Date().toISOString().replace(/\\.\d{3}Z$/, 'Z');
   }
 
   function parseOwnerRepoFolder() {
-    // Pages: https://{owner}.github.io/{repo}/{folder}/admin/
+    // https://{owner}.github.io/{repo}/{folder}/admin/
     const owner = (location.host.split('.')[0] || '').trim();
     const parts = location.pathname.split('/').filter(Boolean); // [repo, folder, admin]
     const repo = (parts[0] || '').trim();
@@ -70,7 +70,7 @@
       const cur = (data && typeof data.url === 'string') ? data.url.trim() : '';
       elCurrent.innerHTML = 'Current URL: <code>' + (cur || '(empty)') + '</code>';
       if (cur) elUrl.value = cur;
-    } catch (e) {
+    } catch {
       elCurrent.innerHTML = 'Current URL: <code>(failed to load)</code>';
     }
   }
@@ -78,17 +78,16 @@
   async function publish() {
     const dest = (elUrl.value || '').trim();
     if (!/^https?:\\/\\//i.test(dest)) {
-      alert('Please enter a valid URL starting with http:// or https://');
+      alert('Enter a valid URL starting with http:// or https://');
       return;
     }
 
-    const tokenKey = 'qr_admin_github_token_v1';
-    let token = (localStorage.getItem(tokenKey) || '').trim();
+    let token = (localStorage.getItem(TOKEN_KEY) || '').trim();
     if (!token) {
-      token = prompt('Paste your GitHub token (repo contents: read/write). This will be saved on this PC.', '') || '';
+      token = prompt('Paste GitHub token (saved on this PC).', '') || '';
       token = token.trim();
       if (!token) return;
-      localStorage.setItem(tokenKey, token);
+      localStorage.setItem(TOKEN_KEY, token);
     }
 
     const { owner, repo, folder } = parseOwnerRepoFolder();
@@ -119,9 +118,10 @@
       const sha = cur && cur.sha;
       if (!sha) throw new Error('Missing sha');
 
+      const json = JSON.stringify({ url: dest, updatedUtc: nowUtc() }, null, 2) + '\\n';
       const body = {
         message: 'Update ' + filePath,
-        content: btoa(unescape(encodeURIComponent(JSON.stringify({ url: dest, updatedUtc: nowUtc() }, null, 2) + '\\n'))),
+        content: btoa(unescape(encodeURIComponent(json))),
         sha,
         branch
       };
@@ -139,11 +139,9 @@
       }
 
       elCurrent.innerHTML = 'Current URL: <code>' + dest + '</code>';
-      alert('Published. GitHub Pages may take 30-90 seconds to update.');
-
+      alert('Published. Wait 30-90 seconds for Pages to update.');
     } catch (e) {
-      const msg = (e && e.message) ? e.message : String(e);
-      alert('Publish failed: ' + msg + '\\n\\nIf token is wrong, refresh and try again.');
+      alert('Publish failed: ' + (e && e.message ? e.message : String(e)));
     } finally {
       elPublish.disabled = false;
       elPublish.textContent = 'Publish';
