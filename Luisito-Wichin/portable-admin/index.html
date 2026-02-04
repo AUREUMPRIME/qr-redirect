@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Portable QR Admin - Luisito-Wichin</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;line-height:1.4;max-width:980px}
+    .box{border:1px solid #e5e5e5;border-radius:14px;padding:14px;margin:14px 0}
+    label{display:block;margin:12px 0 6px;font-weight:600}
+    input,button{font:inherit;padding:10px;border-radius:10px;border:1px solid #ccc}
+    input{width:100%}
+    button{cursor:pointer}
+    code{background:#f5f5f5;padding:2px 6px;border-radius:6px}
+    pre{background:#0b1020;color:#e6e6e6;padding:12px;border-radius:14px;overflow:auto}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row > div{flex:1;min-width:220px}
+    .muted{color:#555}
+    .warn{color:#8a2b0a}
+    a{color:#0b57d0}
+  </style>
+</head>
+<body>
+  <h1>Portable QR Admin</h1>
+  <p class="muted">
+    This file works offline. It generates a new <code>target.json</code> for <code>Luisito-Wichin</code>.
+    The QR code never changes.
+  </p>
+
+  <div class="box">
+    <h2>1) Set the destination link</h2>
+    <label for="url">Destination URL (must start with http(s)://)</label>
+    <input id="url" placeholder="https://..." autocomplete="off" />
+
+    <div class="row" style="margin-top:12px;">
+      <div><button id="btnDownload" type="button">Download target.json</button></div>
+      <div><button id="btnCopy" type="button">Copy JSON</button></div>
+      <div><button id="btnOpenEdit" type="button">Open GitHub edit page</button></div>
+    </div>
+
+    <p class="muted" style="margin-top:10px;">
+      GitHub edit page: <a id="editLink" href="https://github.com/AUREUMPRIME/qr-redirect/edit/main/Luisito-Wichin/target.json" target="_blank" rel="noopener noreferrer">https://github.com/AUREUMPRIME/qr-redirect/edit/main/Luisito-Wichin/target.json</a>
+      <br/>
+      (If edit is blocked, open the file page: <a id="blobLink" href="https://github.com/AUREUMPRIME/qr-redirect/blob/main/Luisito-Wichin/target.json" target="_blank" rel="noopener noreferrer">https://github.com/AUREUMPRIME/qr-redirect/blob/main/Luisito-Wichin/target.json</a>)
+    </p>
+
+    <p class="warn" id="warn"></p>
+    <pre id="preview"></pre>
+  </div>
+
+  <div class="box">
+    <h2>2) Test the live redirect</h2>
+    <p class="muted">
+      Redirect page: <a href="https://aureumprime.github.io/qr-redirect/Luisito-Wichin/" target="_blank" rel="noopener noreferrer">https://aureumprime.github.io/qr-redirect/Luisito-Wichin/</a><br/>
+      Admin page (online): <a href="https://aureumprime.github.io/qr-redirect/Luisito-Wichin/admin/" target="_blank" rel="noopener noreferrer">https://aureumprime.github.io/qr-redirect/Luisito-Wichin/admin/</a><br/>
+      QR SVG: <a href="https://aureumprime.github.io/qr-redirect/Luisito-Wichin/qr.svg" target="_blank" rel="noopener noreferrer">https://aureumprime.github.io/qr-redirect/Luisito-Wichin/qr.svg</a>
+    </p>
+  </div>
+
+<script>
+const elUrl = document.getElementById('url');
+const elPreview = document.getElementById('preview');
+const elWarn = document.getElementById('warn');
+
+const GH_EDIT = "https://github.com/AUREUMPRIME/qr-redirect/edit/main/Luisito-Wichin/target.json";
+
+function nowUtc() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+function buildJson() {
+  const url = (elUrl.value || '').trim();
+  return JSON.stringify({ url, updatedUtc: nowUtc() }, null, 2) + "\n";
+}
+function updatePreview() {
+  const url = (elUrl.value || '').trim();
+  if (!url) elWarn.textContent = "Enter a URL first.";
+  else if (!/^https?:\/\//i.test(url)) elWarn.textContent = "URL must start with http(s)://";
+  else elWarn.textContent = "";
+  elPreview.textContent = buildJson();
+}
+
+document.getElementById('btnDownload').addEventListener('click', () => {
+  const url = (elUrl.value || '').trim();
+  if (!/^https?:\/\//i.test(url)) { alert("Enter a valid http(s):// URL first."); return; }
+
+  const json = buildJson();
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'target.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById('btnCopy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(buildJson());
+    alert('Copied JSON to clipboard.');
+  } catch {
+    alert('Clipboard copy failed. You can manually copy from the preview box.');
+  }
+});
+
+document.getElementById('btnOpenEdit').addEventListener('click', () => {
+  window.open(GH_EDIT, "_blank", "noopener,noreferrer");
+});
+
+elUrl.addEventListener('input', updatePreview);
+updatePreview();
+</script>
+</body>
+</html>
