@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Luisito-Wichin Redirect</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;line-height:1.4}
+    code{background:#f5f5f5;padding:2px 6px;border-radius:6px}
+    a{color:#0b57d0}
+  </style>
+</head>
+<body>
+  <h1>Redirecting…</h1>
+  <p id="status">Loading target…</p>
+  <p>If you see this for more than a few seconds, open the admin page:
+    <a href="./admin/">./admin/</a>
+  </p>
+
+<script>
+(async () => {
+  const statusEl = document.getElementById('status');
+  const set = (t) => statusEl.textContent = t;
+
+  try {
+    const u = new URL('./target.json', location.href);
+    u.searchParams.set('b', String(Date.now())); // cache-bust
+    const res = await fetch(u.toString(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('Failed to load target.json (' + res.status + ')');
+
+    const data = await res.json();
+    const target = (data && typeof data.url === 'string') ? data.url.trim() : '';
+    if (!/^https?:\/\//i.test(target)) {
+      throw new Error('Invalid or missing "url" in target.json. Must start with http(s)://');
+    }
+
+    set('Opening: ' + target);
+    location.replace(target);
+  } catch (err) {
+    set('ERROR: ' + (err && err.message ? err.message : String(err)));
+  }
+})();
+</script>
+</body>
+</html>

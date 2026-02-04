@@ -1,0 +1,9 @@
+# OS
+Thumbs.db
+.DS_Store
+
+# Backups / archives (do not commit)
+archive/
+
+# Local Python deps used only to generate qr.svg (do not commit)
+tools/pydeps/

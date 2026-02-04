@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Luisito-Wichin Admin</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;line-height:1.4;max-width:900px}
+    label{display:block;margin:12px 0 6px;font-weight:600}
+    input,button{font:inherit;padding:10px;border-radius:10px;border:1px solid #ccc}
+    input{width:100%}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row > div{flex:1;min-width:240px}
+    button{cursor:pointer}
+    .muted{color:#555}
+    .box{border:1px solid #e5e5e5;border-radius:14px;padding:14px;margin:14px 0}
+    code{background:#f5f5f5;padding:2px 6px;border-radius:6px}
+    pre{background:#0b1020;color:#e6e6e6;padding:12px;border-radius:14px;overflow:auto}
+  </style>
+</head>
+<body>
+  <h1>Luisito-Wichin Admin</h1>
+  <p class="muted">This page updates <code>../target.json</code>. The QR code does not change.</p>
+
+  <div class="box">
+    <label for="url">Destination URL (must start with http(s)://)</label>
+    <input id="url" placeholder="https://..." autocomplete="off" />
+    <div class="row" style="margin-top:12px;">
+      <div><button id="btnDownload" type="button">Download target.json</button></div>
+      <div><button id="btnCopy" type="button">Copy JSON</button></div>
+    </div>
+    <p class="muted" id="current"></p>
+    <pre id="preview"></pre>
+  </div>
+
+  <div class="box">
+    <h2>Update on GitHub (optional)</h2>
+    <p class="muted">
+      Uses GitHub API to commit the new <code>target.json</code> to the repo.
+      Create a <b>fine-grained</b> token with access only to this repository contents.
+    </p>
+
+    <label for="token">GitHub Token (kept in memory only)</label>
+    <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" />
+
+    <div class="row" style="margin-top:12px;">
+      <div>
+        <label for="owner">Owner</label>
+        <input id="owner" value="AUREUMPRIME" />
+      </div>
+      <div>
+        <label for="repo">Repo</label>
+        <input id="repo" value="qr-redirect" />
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px;">
+      <div>
+        <label for="branch">Branch</label>
+        <input id="branch" value="main" />
+      </div>
+      <div>
+        <label for="path">Path</label>
+        <input id="path" value="Luisito-Wichin/target.json" />
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <button id="btnPush" type="button">Commit update to GitHub</button>
+      <span class="muted" id="pushStatus" style="margin-left:10px;"></span>
+    </div>
+  </div>
+
+  <p class="muted"><a href="../">Back to redirect</a></p>
+
+<script>
+const elUrl = document.getElementById('url');
+const elPreview = document.getElementById('preview');
+const elCurrent = document.getElementById('current');
+
+const elToken = document.getElementById('token');
+const elOwner = document.getElementById('owner');
+const elRepo = document.getElementById('repo');
+const elBranch = document.getElementById('branch');
+const elPath = document.getElementById('path');
+const elPushStatus = document.getElementById('pushStatus');
+
+function nowUtc() {
+  return new Date().toISOString().replace(/\\.\d{3}Z$/, 'Z');
+}
+function buildJson() {
+  const url = (elUrl.value || '').trim();
+  return JSON.stringify({ url, updatedUtc: nowUtc() }, null, 2) + "\\n";
+}
+function updatePreview() {
+  elPreview.textContent = buildJson();
+}
+function b64utf8(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+async function loadCurrent() {
+  try {
+    const u = new URL('../target.json', location.href);
+    u.searchParams.set('b', String(Date.now()));
+    const res = await fetch(u.toString(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('Failed to load target.json (' + res.status + ')');
+    const data = await res.json();
+    const url = (data && data.url) ? String(data.url) : '';
+    elUrl.value = url;
+    elCurrent.textContent = 'Current: ' + url;
+    updatePreview();
+  } catch (e) {
+    elCurrent.textContent = 'Could not load current target.json: ' + (e && e.message ? e.message : String(e));
+    updatePreview();
+  }
+}
+
+document.getElementById('btnDownload').addEventListener('click', () => {
+  const json = buildJson();
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'target.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById('btnCopy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(buildJson());
+    alert('Copied JSON to clipboard.');
+  } catch {
+    alert('Clipboard copy failed. You can manually copy from the preview box.');
+  }
+});
+
+document.getElementById('btnPush').addEventListener('click', async () => {
+  elPushStatus.textContent = 'Working...';
+  const token = (elToken.value || '').trim();
+  const owner = (elOwner.value || '').trim();
+  const repo = (elRepo.value || '').trim();
+  const branch = (elBranch.value || '').trim();
+  const path = (elPath.value || '').trim();
+
+  const json = buildJson();
+  const url = JSON.parse(json).url || '';
+  if (!/^https?:\\/\\//i.test(url.trim())) {
+    elPushStatus.textContent = 'Destination URL must start with http(s)://';
+    return;
+  }
+  if (!token || !owner || !repo || !branch || !path) {
+    elPushStatus.textContent = 'Missing token/owner/repo/branch/path';
+    return;
+  }
+
+  const apiBase = 'https://api.github.com';
+  const headers = {
+    'Accept': 'application/vnd.github+json',
+    'Authorization': 'Bearer ' + token,
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+
+  try {
+    const getRes = await fetch(apiBase + '/repos/' + owner + '/' + repo + '/contents/' + encodeURIComponent(path) + '?ref=' + encodeURIComponent(branch), { headers });
+    if (!getRes.ok) throw new Error('GET contents failed (' + getRes.status + ')');
+    const cur = await getRes.json();
+    const sha = cur.sha;
+    if (!sha) throw new Error('Missing sha from GET contents response');
+
+    const putBody = {
+      message: 'Update ' + path,
+      content: b64utf8(json),
+      sha,
+      branch
+    };
+
+    const putRes = await fetch(apiBase + '/repos/' + owner + '/' + repo + '/contents/' + encodeURIComponent(path), {
+      method: 'PUT',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(putBody)
+    });
+    if (!putRes.ok) {
+      const txt = await putRes.text();
+      throw new Error('PUT failed (' + putRes.status + '): ' + txt);
+    }
+    elPushStatus.textContent = 'Committed. GitHub Pages may take a bit to update.';
+  } catch (e) {
+    elPushStatus.textContent = 'Error: ' + (e && e.message ? e.message : String(e));
+  }
+});
+
+elUrl.addEventListener('input', updatePreview);
+loadCurrent();
+</script>
+</body>
+</html>
