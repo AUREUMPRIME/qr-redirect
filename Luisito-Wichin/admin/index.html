@@ -20,7 +20,7 @@
   </style>
 </head>
 <body>
-  <!-- build:20260204-044045 -->
+  <!-- build:20260204-050742 -->
   <h1>Luisito-Wichin Admin</h1>
   <div class="card">
     <div class="row" id="current">Current URL: <code>Loading...</code></div>
@@ -36,116 +36,129 @@
   </div>
 
 <script>
-(() => {
-  const elCurrent = document.getElementById('current');
-  const elUrl = document.getElementById('url');
-  const elPublish = document.getElementById('publish');
+(function () {
+  var elCurrent = document.getElementById('current');
+  var elUrl = document.getElementById('url');
+  var elPublish = document.getElementById('publish');
 
-  const TOKEN_KEY = 'qr_admin_token_v2';
+  var TOKEN_KEY = 'qr_admin_token_v2';
 
-  function nowUtc() {
-    return new Date().toISOString().replace(/\\.\d{3}Z$/, 'Z');
+  function nowUtcNoMs() {
+    var iso = new Date().toISOString(); // YYYY-MM-DDTHH:mm:ss.sssZ
+    return iso.slice(0, 19) + 'Z';      // YYYY-MM-DDTHH:mm:ssZ
   }
 
   function parseOwnerRepoFolder() {
     // https://{owner}.github.io/{repo}/{folder}/admin/
-    const owner = (location.host.split('.')[0] || '').trim();
-    const parts = location.pathname.split('/').filter(Boolean); // [repo, folder, admin]
-    const repo = (parts[0] || '').trim();
-    const folder = (parts[1] || 'Luisito-Wichin').trim();
-    return { owner, repo, folder };
+    var hostParts = String(location.host || '').split('.');
+    var owner = (hostParts[0] || '').trim();
+    var parts = String(location.pathname || '').split('/').filter(Boolean); // [repo, folder, admin]
+    var repo = (parts[0] || '').trim();
+    var folder = (parts[1] || 'Luisito-Wichin').trim();
+    return { owner: owner, repo: repo, folder: folder };
   }
 
   function safePath(path) {
-    return path.split('/').map(encodeURIComponent).join('/');
+    return String(path).split('/').map(encodeURIComponent).join('/');
   }
 
-  async function loadCurrent() {
-    try {
-      const u = new URL('../target.json', location.href);
-      u.searchParams.set('b', String(Date.now()));
-      const res = await fetch(u.toString(), { cache: 'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const cur = (data && typeof data.url === 'string') ? data.url.trim() : '';
-      elCurrent.innerHTML = 'Current URL: <code>' + (cur || '(empty)') + '</code>';
-      if (cur) elUrl.value = cur;
-    } catch {
-      elCurrent.innerHTML = 'Current URL: <code>(failed to load)</code>';
-    }
+  function startsWithHttp(url) {
+    url = String(url || '').trim().toLowerCase();
+    return url.indexOf('http://') === 0 || url.indexOf('https://') === 0;
   }
 
-  async function publish() {
-    const dest = (elUrl.value || '').trim();
-    if (!/^https?:\\/\\//i.test(dest)) {
+  function setCurrentText(text) {
+    elCurrent.innerHTML = 'Current URL: <code>' + text + '</code>';
+  }
+
+  function loadCurrent() {
+    var u = new URL('../target.json', location.href);
+    u.searchParams.set('b', String(Date.now()));
+    fetch(u.toString(), { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        var cur = (data && typeof data.url === 'string') ? data.url.trim() : '';
+        setCurrentText(cur || '(empty)');
+        if (cur) elUrl.value = cur;
+      })
+      .catch(function () {
+        setCurrentText('(failed to load)');
+      });
+  }
+
+  function publish() {
+    var dest = String(elUrl.value || '').trim();
+    if (!startsWithHttp(dest)) {
       alert('Enter a valid URL starting with http:// or https://');
       return;
     }
 
-    let token = (localStorage.getItem(TOKEN_KEY) || '').trim();
+    var token = String(localStorage.getItem(TOKEN_KEY) || '').trim();
     if (!token) {
-      token = prompt('Paste GitHub token (saved on this PC).', '') || '';
-      token = token.trim();
+      token = String(prompt('Paste GitHub token (saved on this PC).', '') || '').trim();
       if (!token) return;
       localStorage.setItem(TOKEN_KEY, token);
     }
 
-    const { owner, repo, folder } = parseOwnerRepoFolder();
-    if (!owner || !repo) {
+    var info = parseOwnerRepoFolder();
+    if (!info.owner || !info.repo) {
       alert('Could not determine owner/repo from this URL.');
       return;
     }
 
-    const branch = 'main';
-    const filePath = folder + '/target.json';
-    const apiBase = 'https://api.github.com';
+    var branch = 'main';
+    var filePath = info.folder + '/target.json';
+    var apiBase = 'https://api.github.com';
 
-    const headers = {
+    var headers = {
       'Accept': 'application/vnd.github+json',
       'Authorization': 'Bearer ' + token,
       'X-GitHub-Api-Version': '2022-11-28'
     };
 
-    try {
-      elPublish.disabled = true;
-      elPublish.textContent = 'Publishing...';
+    elPublish.disabled = true;
+    elPublish.textContent = 'Publishing...';
 
-      const getUrl = apiBase + '/repos/' + owner + '/' + repo + '/contents/' + safePath(filePath) + '?ref=' + encodeURIComponent(branch);
-      const getRes = await fetch(getUrl, { headers });
-      if (!getRes.ok) throw new Error('GitHub GET failed (' + getRes.status + ')');
+    var getUrl = apiBase + '/repos/' + info.owner + '/' + info.repo + '/contents/' + safePath(filePath) + '?ref=' + encodeURIComponent(branch);
+    fetch(getUrl, { headers: headers })
+      .then(function (res) {
+        if (!res.ok) throw new Error('GitHub GET failed (' + res.status + ')');
+        return res.json();
+      })
+      .then(function (cur) {
+        if (!cur || !cur.sha) throw new Error('Missing sha');
+        var json = JSON.stringify({ url: dest, updatedUtc: nowUtcNoMs() }, null, 2) + '\n';
+        var body = {
+          message: 'Update ' + filePath,
+          content: btoa(unescape(encodeURIComponent(json))),
+          sha: cur.sha,
+          branch: branch
+        };
 
-      const cur = await getRes.json();
-      const sha = cur && cur.sha;
-      if (!sha) throw new Error('Missing sha');
-
-      const json = JSON.stringify({ url: dest, updatedUtc: nowUtc() }, null, 2) + '\\n';
-      const body = {
-        message: 'Update ' + filePath,
-        content: btoa(unescape(encodeURIComponent(json))),
-        sha,
-        branch
-      };
-
-      const putUrl = apiBase + '/repos/' + owner + '/' + repo + '/contents/' + safePath(filePath);
-      const putRes = await fetch(putUrl, {
-        method: 'PUT',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        var putUrl = apiBase + '/repos/' + info.owner + '/' + info.repo + '/contents/' + safePath(filePath);
+        return fetch(putUrl, {
+          method: 'PUT',
+          headers: Object.assign({}, headers, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify(body)
+        });
+      })
+      .then(function (res) {
+        if (!res.ok) {
+          return res.text().then(function (t) { throw new Error('GitHub PUT failed (' + res.status + '): ' + t); });
+        }
+        setCurrentText(dest);
+        alert('Published. Wait 30-90 seconds for Pages to update.');
+      })
+      .catch(function (e) {
+        alert('Publish failed: ' + (e && e.message ? e.message : String(e)));
+      })
+      .finally(function () {
+        elPublish.disabled = false;
+        elPublish.textContent = 'Publish';
       });
-
-      if (!putRes.ok) {
-        const txt = await putRes.text();
-        throw new Error('GitHub PUT failed (' + putRes.status + '): ' + txt);
-      }
-
-      elCurrent.innerHTML = 'Current URL: <code>' + dest + '</code>';
-      alert('Published. Wait 30-90 seconds for Pages to update.');
-    } catch (e) {
-      alert('Publish failed: ' + (e && e.message ? e.message : String(e)));
-    } finally {
-      elPublish.disabled = false;
-      elPublish.textContent = 'Publish';
-    }
   }
 
   elPublish.addEventListener('click', publish);
